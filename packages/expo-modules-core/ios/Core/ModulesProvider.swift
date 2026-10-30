@@ -1,9 +1,9 @@
 import Foundation
 
 /**
- The native exports of one npm package that are declared with the Expo Modules API 2.0 macros, such as `@ExpoModule`.
- A modules provider returns the packages keyed by the npm package name, and that name is the JS name of the package,
- for example `expo.packages['expo-audio'].AudioModule`.
+ The native exports of one npm package that are declared with the Expo Modules API 2.0 macros: its modules
+ and shared object classes. A modules provider returns the packages keyed by the npm package name, and that name
+ is the JS name of the package, for example `expo.packages['expo-audio'].AudioPlayer`.
  Local and inline modules are in the `$local` package.
  */
 public struct ExpoPackage {
@@ -33,8 +33,14 @@ public struct ExpoPackage {
    */
   public let modules: [AnyModule.Type]
 
-  public init(modules: [AnyModule.Type] = []) {
+  /**
+   Shared object classes of the package. They are exported next to the modules, not as members of a module.
+   */
+  public let sharedObjects: [SharedObject.Type]
+
+  public init(modules: [AnyModule.Type] = [], sharedObjects: [SharedObject.Type] = []) {
     self.modules = modules
+    self.sharedObjects = sharedObjects
   }
 }
 

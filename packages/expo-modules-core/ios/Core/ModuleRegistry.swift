@@ -4,6 +4,11 @@ public final class ModuleRegistry: Sequence {
   private weak var appContext: AppContext?
 
   private let registry = Mutex<[String: ModuleHolder]>([:])
+
+  /**
+   Shared object classes keyed by the name of the package they are exported in.
+   */
+  private let sharedObjectTypesByPackage = Mutex<[String: [SharedObject.Type]]>([:])
   private var overrideDisallowModules = Set<String>()
 
   init(appContext: AppContext) {
@@ -90,11 +95,16 @@ public final class ModuleRegistry: Sequence {
   }
 
   /**
-   Registers the modules of the package with the given name.
+   Registers the modules and shared object classes of the package with the given name.
    */
   public func register(package: ExpoPackage, named packageName: String) {
     for module in package.modules {
       register(moduleType: module, name: nil, packageName: packageName)
+    }
+    if !package.sharedObjects.isEmpty {
+      sharedObjectTypesByPackage.withLock { sharedObjectTypes in
+        sharedObjectTypes[packageName, default: []].append(contentsOf: package.sharedObjects)
+      }
     }
   }
 
@@ -158,10 +168,13 @@ public final class ModuleRegistry: Sequence {
    and the others are sorted.
    */
   public var packageNames: [String] {
-    let names = registry.withLock { registry in
-      return Set(registry.values.compactMap(\.packageName))
+    let modulePackageNames = registry.withLock { registry in
+      return registry.values.compactMap(\.packageName)
     }
-    return names.sorted { lhs, rhs in
+    let sharedObjectPackageNames = sharedObjectTypesByPackage.withLock { sharedObjectTypes in
+      return Array(sharedObjectTypes.keys)
+    }
+    return Set(modulePackageNames + sharedObjectPackageNames).sorted { lhs, rhs in
       if (lhs == ExpoPackage.localPackageName) != (rhs == ExpoPackage.localPackageName) {
         return lhs == ExpoPackage.localPackageName
       }
@@ -173,8 +186,32 @@ public final class ModuleRegistry: Sequence {
    Returns whether any registered module or shared object class is in the package with the given name.
    */
   public func hasPackage(named packageName: String) -> Bool {
-    return registry.withLock { registry in
+    let hasModules = registry.withLock { registry in
       return registry.values.contains { $0.packageName == packageName }
+    }
+    return hasModules || !sharedObjectTypes(inPackage: packageName).isEmpty
+  }
+
+  /**
+   Returns the shared object classes exported in the package with the given name, in the order the provider listed them.
+   */
+  public func sharedObjectTypes(inPackage packageName: String) -> [SharedObject.Type] {
+    return sharedObjectTypesByPackage.withLock { sharedObjectTypes in
+      return sharedObjectTypes[packageName] ?? []
+    }
+  }
+
+  /**
+   Returns the exported shared object class with the given type identifier, or `nil` if no package exports it.
+   */
+  internal func sharedObjectType(for typeId: ObjectIdentifier) -> SharedObject.Type? {
+    return sharedObjectTypesByPackage.withLock { sharedObjectTypes in
+      for types in sharedObjectTypes.values {
+        if let type = types.first(where: { ObjectIdentifier($0) == typeId }) {
+          return type
+        }
+      }
+      return nil
     }
   }
 
