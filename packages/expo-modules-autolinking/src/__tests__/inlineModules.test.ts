@@ -12,6 +12,7 @@ import {
   getMirrorStateObject,
   getKotlinInlineModuleInfo,
   hasSwiftModuleDefinition,
+  usesExpoModuleMacro,
   inlineModuleFileNameInformation,
 } from '../inlineModules/inlineModules';
 import { isTargetInInlineModulesTargets } from '../inlineModules/iosInlineModules';
@@ -91,6 +92,22 @@ describe('inlineModules.ts', () => {
         valid: false,
         ext: '.ts',
       });
+    });
+  });
+
+  describe('usesExpoModuleMacro', () => {
+    it('is true only for a module declared with the @ExpoModule macro', async () => {
+      vol.fromJSON({
+        '/example-project/GreeterModule.swift':
+          'import ExpoModulesCore\n@ExpoModule\npublic final class GreeterModule: Module {}',
+        '/example-project/AppIntentsSetup.swift':
+          'import ExpoModulesCore\nfinal class AppIntentsSetup: Module {\n  func definition() -> ModuleDefinition { Name("AppIntentsSetup") }\n}',
+      });
+
+      await expect(usesExpoModuleMacro('/example-project/GreeterModule.swift')).resolves.toBe(true);
+      await expect(usesExpoModuleMacro('/example-project/AppIntentsSetup.swift')).resolves.toBe(
+        false
+      );
     });
   });
 
@@ -382,6 +399,7 @@ describe('androidInlineModules.ts', () => {
         files: [{ filePath: '/src/SimpleModule.kt', watchedDir: '/src' }],
         kotlinClasses: [],
         swiftModuleClassNames: [],
+        swiftExpoModuleClassNames: [],
       };
 
       vol.fromJSON({
@@ -419,6 +437,7 @@ describe('androidInlineModules.ts', () => {
           },
         ],
         swiftModuleClassNames: [],
+        swiftExpoModuleClassNames: [],
         kotlinClasses: [],
       };
 
@@ -450,6 +469,7 @@ describe('androidInlineModules.ts', () => {
       const mockMirror: InlineModulesMirror = {
         files: [],
         swiftModuleClassNames: [],
+        swiftExpoModuleClassNames: [],
         kotlinClasses: ['some.simple.package.SimpleModule', 'other.package.SimpleView'],
       };
 

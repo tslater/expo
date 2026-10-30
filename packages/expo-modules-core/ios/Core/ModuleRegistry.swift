@@ -40,26 +40,39 @@ public final class ModuleRegistry: Sequence {
   /**
    Registers an instance of the module.
    */
-  public func register(module: AnyModule, name: String?, preventModuleOverriding: Bool = false) {
+  public func register(
+    module: AnyModule,
+    name: String?,
+    packageName: String? = nil,
+    preventModuleOverriding: Bool = false
+  ) {
     guard let appContext else {
       log.error("Unable to register a module '\(module)', the app context is unavailable")
       return
     }
     register(
-      holder: ModuleHolder(appContext: appContext, module: module, name: name),
+      holder: ModuleHolder(appContext: appContext, module: module, name: name, packageName: packageName),
       preventModuleOverriding: preventModuleOverriding)
   }
 
   /**
    Registers a module by its type.
    */
-  public func register(moduleType: AnyModule.Type, name: String?, preventModuleOverriding: Bool = false) {
+  public func register(
+    moduleType: AnyModule.Type,
+    name: String?,
+    packageName: String? = nil,
+    preventModuleOverriding: Bool = false
+  ) {
     guard let appContext else {
       log.error("Unable to register a module '\(moduleType)', the app context is unavailable")
       return
     }
     register(
-      module: moduleType.init(appContext: appContext), name: name, preventModuleOverriding: preventModuleOverriding)
+      module: moduleType.init(appContext: appContext),
+      name: name,
+      packageName: packageName,
+      preventModuleOverriding: preventModuleOverriding)
   }
 
   /**
@@ -68,6 +81,20 @@ public final class ModuleRegistry: Sequence {
   public func register(fromProvider provider: ModulesProviderProtocol) {
     provider.getModuleClasses().forEach { module, name in
       register(moduleType: module, name: name)
+    }
+    // The packages are registered after the other modules, so a module declared with the macros wins
+    // over another module with the same name.
+    for (packageName, package) in ExpoPackage.inRegistrationOrder(provider.packages) {
+      register(package: package, named: packageName)
+    }
+  }
+
+  /**
+   Registers the modules of the package with the given name.
+   */
+  public func register(package: ExpoPackage, named packageName: String) {
+    for module in package.modules {
+      register(moduleType: module, name: nil, packageName: packageName)
     }
   }
 
@@ -123,6 +150,22 @@ public final class ModuleRegistry: Sequence {
   public func getModuleNames() -> [String] {
     return registry.withLock { registry in
       return Array(registry.keys)
+    }
+  }
+
+  /**
+   The names of the packages of the registered modules, without duplicates. The local package comes first,
+   and the others are sorted.
+   */
+  public var packageNames: [String] {
+    let names = registry.withLock { registry in
+      return Set(registry.values.compactMap(\.packageName))
+    }
+    return names.sorted { lhs, rhs in
+      if (lhs == ExpoPackage.localPackageName) != (rhs == ExpoPackage.localPackageName) {
+        return lhs == ExpoPackage.localPackageName
+      }
+      return lhs < rhs
     }
   }
 

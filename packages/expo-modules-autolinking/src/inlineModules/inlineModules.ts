@@ -9,11 +9,13 @@ import { maybeRealpath, scanFilesRecursively } from '../utils';
  * For a given project contains information about all of the inline modules inside.
  * - files: array of files and the watchedDirectories they come from
  * - swiftModuleClassNames: array of swift inline modules class names.
+ * - swiftExpoModuleClassNames: the swift inline modules declared with the `@ExpoModule` macro.
  * - kotlinClasses: array of kotlin inline modules in format `<package>.<className>`
  */
 export interface InlineModulesMirror {
   files: { filePath: string; watchedDir: string }[];
   swiftModuleClassNames: string[];
+  swiftExpoModuleClassNames: string[];
   kotlinClasses: string[];
 }
 
@@ -106,6 +108,18 @@ export async function hasSwiftModuleDefinition(absoluteFilePath: string): Promis
 }
 
 /**
+ * Whether the Swift file declares a module with the `@ExpoModule` macro (Expo Modules API 2.0).
+ */
+export async function usesExpoModuleMacro(absoluteFilePath: string): Promise<boolean> {
+  try {
+    const contents = await fs.promises.readFile(absoluteFilePath, 'utf8');
+    return swiftExpoModuleMacroRegex.test(contents);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Scans the project and returns information about all of the inline modules inside in an InlineModulesMirror object.
  */
 export async function getMirrorStateObject(
@@ -115,6 +129,7 @@ export async function getMirrorStateObject(
   const inlineModulesMirror: InlineModulesMirror = {
     kotlinClasses: [],
     swiftModuleClassNames: [],
+    swiftExpoModuleClassNames: [],
     files: [],
   };
 
@@ -148,6 +163,9 @@ export async function getMirrorStateObject(
       } else if (ext === '.swift' && (await hasSwiftModuleDefinition(absoluteFilePath))) {
         const swiftClassName = getSwiftModuleClassName(absoluteFilePath);
         inlineModulesMirror.swiftModuleClassNames.push(swiftClassName);
+        if (await usesExpoModuleMacro(absoluteFilePath)) {
+          inlineModulesMirror.swiftExpoModuleClassNames.push(swiftClassName);
+        }
       }
       inlineModulesMirror.files.push({
         filePath: absoluteFilePath,
@@ -158,5 +176,6 @@ export async function getMirrorStateObject(
   // Sort the kotlin and swift classes as later we want to use them to generate module providers and it's better to do it consistently for caching.
   inlineModulesMirror.kotlinClasses.sort();
   inlineModulesMirror.swiftModuleClassNames.sort();
+  inlineModulesMirror.swiftExpoModuleClassNames.sort();
   return inlineModulesMirror;
 }

@@ -1,12 +1,57 @@
 import Foundation
 
 /**
+ The native exports of one npm package that are declared with the Expo Modules API 2.0 macros, such as `@ExpoModule`.
+ A modules provider returns the packages keyed by the npm package name, and that name is the JS name of the package.
+ Local and inline modules are in the `$local` package.
+ */
+public struct ExpoPackage {
+  /**
+   Name of the package of local and inline modules. It can't be the name of an npm package.
+   */
+  public static let localPackageName = "$local"
+
+  /**
+   Returns the packages in the order to register them: the npm packages by name, then the local package.
+   The module registered last wins when two modules have the same name, so the app's own modules win,
+   and the result is the same on every launch.
+   */
+  static func inRegistrationOrder(_ packages: [String: ExpoPackage]) -> [(name: String, package: ExpoPackage)] {
+    return packages
+      .map { (name: $0.key, package: $0.value) }
+      .sorted { lhs, rhs in
+        if (lhs.name == localPackageName) != (rhs.name == localPackageName) {
+          return rhs.name == localPackageName
+        }
+        return lhs.name < rhs.name
+      }
+  }
+
+  /**
+   Module classes of the package.
+   */
+  public let modules: [AnyModule.Type]
+
+  public init(modules: [AnyModule.Type] = []) {
+    self.modules = modules
+  }
+}
+
+/**
  Swift protocol defining the requirements for modules providers.
  */
 public protocol ModulesProviderProtocol {
   typealias ExpoModuleTupleType = (module: AnyModule.Type, name: String?)
 
+  /**
+   Returns the module classes that don't use the Expo Modules API 2.0 macros.
+   */
   func getModuleClasses() -> [ExpoModuleTupleType]
+
+  /**
+   The packages that provide modules declared with the Expo Modules API 2.0 macros, keyed by the npm package name.
+   */
+  var packages: [String: ExpoPackage] { get }
 
   /**
    Returns an array of classes that hooks into `ExpoAppDelegate` to receive app delegate events.
@@ -32,6 +77,10 @@ open class ModulesProvider: NSObject, ModulesProviderProtocol {
 
   open func getModuleClasses() -> [ExpoModuleTupleType] {
     return []
+  }
+
+  open var packages: [String: ExpoPackage] {
+    return [:]
   }
 
   open func getAppDelegateSubscribers() -> [ExpoAppDelegateSubscriber.Type] {
